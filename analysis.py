@@ -2,31 +2,14 @@
 Analysis Example
 Custom Data Retention
 
-Use your account token to get the list of devices, then go to each device removing the
+Get the list of devices, then go to each device removing the
 variables you chooses.
-
-Instructions
-To run this analysis you need to add an account token to the environment variables,
-To do that, go to your account settings, then token and copy your token.
-Go the the analysis, then environment variables,
-type account_token on key, and paste your token on value
 """
-from tagoio_sdk import Analysis, Account, Device
-from tagoio_sdk.modules.Utils.getTokenByName import getTokenByName
+from tagoio_sdk import Analysis, Device, Resources
 
 
 # The function myAnalysis will run when you execute your analysis
 def my_analysis(context, scope: list):
-    # reads the value of account_token from the environment variable
-    account_token = next(
-        (item for item in context.environment if item["key"] == "account_token"), None
-    )
-
-    if not account_token:
-        raise ValueError("Missing 'account_token' in the environment variables")
-
-    account = Account({"token": account_token["value"]})
-
     # Bellow is an empty filter.
     # Examples of filter:
     # { tags: [{ key: 'tag-key', value: 'tag-value' }]}
@@ -35,18 +18,28 @@ def my_analysis(context, scope: list):
     # { bucket: 'bucket-id' }
     filter = {}
 
-    devices = account.devices.listDevice(
+
+    resources = Resources()
+    devices = resources.devices.listDevice(
         {
             "page": 1,
-            "fields": ["id"],
+            "fields": ["id", "type"],
             "filter": filter,
             "amount": 100,
         }
     )
 
     for device_obj in devices:
-        token = getTokenByName(account, device_obj["id"])
-        device = Device({"token": token})
+        type_device = device_obj.get("type")
+        # immutable devices can't have data removed
+        if type_device == "immutable":
+            continue
+
+        tokens = resources.devices.tokenList(deviceID=device_obj["id"])
+        if not tokens:
+            continue
+
+        device = Device({"token": tokens[0]["token"]})
 
         variables = ["temperature"]
         qty = 100  # remove 100 registers of each variable
@@ -59,4 +52,4 @@ def my_analysis(context, scope: list):
 
 
 # The analysis token in only necessary to run the analysis outside TagoIO
-Analysis(params={"token": "MY-ANALYSIS-TOKEN-HERE"}).init(my_analysis)
+Analysis.use(my_analysis, params={"token": "MY-ANALYSIS-TOKEN-HERE"})
